@@ -2,7 +2,7 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from typing import List, Dict
 import os
-from schema import Schema
+from schema import Schema, Literal
 from griptape.artifacts import ListArtifact, JsonArtifact
 from griptape.tools import BaseTool
 from griptape.utils.decorators import activity
@@ -24,7 +24,25 @@ SERVICE_ACCOUNT_INFO = {
 class GmailTool(BaseTool):
     @activity(
         config={
-            "description": "Lists unread emails from Gmail inbox using service account credentials"
+            "description": "Lists unread emails from Gmail inbox using service account credentials",
+            "schema": Schema({
+                Literal(
+                    "userId",
+                    description="Gmail user ID, usually 'me' for authenticated user"
+                ): str,
+                Literal(
+                    "q",
+                    description="Gmail search query, e.g. 'is:unread'"
+                ): str,
+                Literal(
+                    "labelIds",
+                    description="List of Gmail label IDs to filter by"
+                ): list,
+                Literal(
+                    "maxResults",
+                    description="Maximum number of emails to return"
+                ): int
+            })
         }
     )
     def list_unread_emails(self, params: dict) -> ListArtifact:
@@ -39,10 +57,10 @@ class GmailTool(BaseTool):
         service = build('gmail', 'v1', credentials=delegated_credentials)
         
         results = service.users().messages().list(
-            userId='me',
-            q='is:unread',
-            labelIds=['INBOX'],
-            maxResults=10
+            userId=params["values"]["userId"],
+            q=params["values"]["q"],
+            labelIds=params["values"]["labelIds"],
+            maxResults=params["values"]["maxResults"]
         ).execute()
 
         messages = results.get('messages', [])
