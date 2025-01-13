@@ -6,6 +6,8 @@ from schema import Schema, Literal
 from griptape.artifacts import ListArtifact, JsonArtifact
 from griptape.tools import BaseTool
 from griptape.utils.decorators import activity
+from email.mime.text import MIMEText
+import base64
 
 # JSON config approach
 SERVICE_ACCOUNT_INFO = {
@@ -85,6 +87,72 @@ class GmailTool(BaseTool):
             emails.append(JsonArtifact(email_data))
             
         return ListArtifact(emails)
+
+    @activity(
+        config={
+            "description": "Creates a draft email in Gmail using service account credentials",
+            "schema": Schema({
+                Literal(
+                    "userId",
+                    description="Gmail user ID, usually 'me' for authenticated user"
+                ): str,
+                Literal(
+                    "to",
+                    description="Recipient email address"
+                ): str,
+                Literal(
+                    "subject",
+                    description="Email subject"
+                ): str,
+                Literal(
+                    "body",
+                    description="Email body content"
+                ): str,
+                Literal(
+                    "cc",
+                    description="CC recipients (optional)"
+                ): str | None,
+                Literal(
+                    "bcc",
+                    description="BCC recipients (optional)"
+                ): str | None
+            })
+        }
+    )
+    def create_draft_email(self, params: dict) -> JsonArtifact:
+        """Creates a draft email in Gmail using service account credentials."""
+        credentials = service_account.Credentials.from_service_account_info(
+            SERVICE_ACCOUNT_INFO,
+            scopes=['https://www.googleapis.com/auth/gmail.compose']
+        )
+        
+        delegated_credentials = credentials.with_subject(os.getenv('GOOGLE_DELEGATED_EMAIL'))
+        service = build('gmail', 'v1', credentials=delegated_credentials)
+
+        message = MIMEText(params["values"]["body"])
+        message['to'] = params["values"]["to"]
+        message['subject'] = params["values"]["subject"]
+        
+        if params["values"].get("cc"):
+            message['cc'] = params["values"]["cc"]
+        if params["values"].get("bcc"):
+            message['bcc'] = params["values"]["bcc"]
+            
+        encoded_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
+        
+        draft = service.users().drafts().create(
+            userId=params["values"]["userId"],
+            body={
+                'message': {
+                    'raw': encoded_message
+                }
+            }
+        ).execute()
+        
+        return JsonArtifact({
+            'id': draft['id'],
+            'message': draft['message']
+        })
 
 def init_tool() -> BaseTool:
     return GmailTool()
