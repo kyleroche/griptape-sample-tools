@@ -154,5 +154,76 @@ class GmailTool(BaseTool):
             'message': draft['message']
         })
 
+    @activity(
+        config={
+            "description": "Sends an existing draft email",
+            "schema": Schema({
+                Literal(
+                    "userId",
+                    description="Gmail user ID, usually 'me' for authenticated user"
+                ): str,
+                Literal(
+                    "draftId",
+                    description="ID of the draft to send"
+                ): str
+            })
+        }
+    )
+    def send_draft_email(self, params: dict) -> JsonArtifact:
+        """Sends an existing draft email."""
+        credentials = service_account.Credentials.from_service_account_info(
+            SERVICE_ACCOUNT_INFO,
+            scopes=['https://www.googleapis.com/auth/gmail.compose']
+        )
+        
+        delegated_credentials = credentials.with_subject(os.getenv('GOOGLE_DELEGATED_EMAIL'))
+        service = build('gmail', 'v1', credentials=delegated_credentials)
+        
+        sent_message = service.users().drafts().send(
+            userId=params["values"]["userId"],
+            body={'id': params["values"]["draftId"]}
+        ).execute()
+        
+        return JsonArtifact({
+            'id': sent_message['id'],
+            'labelIds': sent_message['labelIds'],
+            'threadId': sent_message['threadId']
+        })
+
+    @activity(
+        config={
+            "description": "Deletes an existing draft email",
+            "schema": Schema({
+                Literal(
+                    "userId",
+                    description="Gmail user ID, usually 'me' for authenticated user"
+                ): str,
+                Literal(
+                    "draftId",
+                    description="ID of the draft to delete"
+                ): str
+            })
+        }
+    )
+    def delete_draft_email(self, params: dict) -> JsonArtifact:
+        """Deletes an existing draft email."""
+        credentials = service_account.Credentials.from_service_account_info(
+            SERVICE_ACCOUNT_INFO,
+            scopes=['https://www.googleapis.com/auth/gmail.compose']
+        )
+        
+        delegated_credentials = credentials.with_subject(os.getenv('GOOGLE_DELEGATED_EMAIL'))
+        service = build('gmail', 'v1', credentials=delegated_credentials)
+        
+        service.users().drafts().delete(
+            userId=params["values"]["userId"],
+            id=params["values"]["draftId"]
+        ).execute()
+        
+        return JsonArtifact({
+            'success': True,
+            'draftId': params["values"]["draftId"]
+        })
+
 def init_tool() -> BaseTool:
     return GmailTool()
