@@ -9,19 +9,30 @@ from griptape.utils.decorators import activity
 from email.mime.text import MIMEText
 import base64
 
-# JSON config approach
-SERVICE_ACCOUNT_INFO = {
-    "type": "service_account",
-    "project_id": os.getenv('GOOGLE_PROJECT_ID'),
-    "private_key_id": os.getenv('GOOGLE_PRIVATE_KEY_ID'),
-    "private_key": os.getenv('GOOGLE_PRIVATE_KEY'),
-    "client_email": os.getenv('GOOGLE_CLIENT_EMAIL'),
-    "client_id": os.getenv('GOOGLE_CLIENT_ID'),
-    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-    "token_uri": "https://oauth2.googleapis.com/token",
-    "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-    "client_x509_cert_url": f"https://www.googleapis.com/robot/v1/metadata/x509/{os.getenv('GOOGLE_CLIENT_EMAIL').replace('@', '%40')}"
-}
+REQUIRED_ENV_VARS = [
+    "GOOGLE_PROJECT_ID",
+    "GOOGLE_PRIVATE_KEY_ID",
+    "GOOGLE_PRIVATE_KEY",
+    "GOOGLE_CLIENT_EMAIL",
+    "GOOGLE_CLIENT_ID",
+    "GOOGLE_DELEGATED_EMAIL",
+]
+
+
+def get_service_account_info() -> dict:
+    # JSON config approach
+    return {
+        "type": "service_account",
+        "project_id": os.getenv("GOOGLE_PROJECT_ID"),
+        "private_key_id": os.getenv("GOOGLE_PRIVATE_KEY_ID"),
+        "private_key": os.getenv("GOOGLE_PRIVATE_KEY"),
+        "client_email": os.getenv("GOOGLE_CLIENT_EMAIL"),
+        "client_id": os.getenv("GOOGLE_CLIENT_ID"),
+        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+        "token_uri": "https://oauth2.googleapis.com/token",
+        "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+        "client_x509_cert_url": f"https://www.googleapis.com/robot/v1/metadata/x509/{os.getenv('GOOGLE_CLIENT_EMAIL').replace('@', '%40')}",
+    }
 
 class GmailTool(BaseTool):
     @activity(
@@ -50,7 +61,7 @@ class GmailTool(BaseTool):
     def list_unread_emails(self, params: dict) -> ListArtifact:
         """Lists unread emails from Gmail inbox using service account credentials."""
         credentials = service_account.Credentials.from_service_account_info(
-            SERVICE_ACCOUNT_INFO,
+            get_service_account_info()d,
             scopes=['https://www.googleapis.com/auth/gmail.readonly']
         )
         
@@ -172,7 +183,7 @@ class GmailTool(BaseTool):
     def send_draft_email(self, params: dict) -> JsonArtifact:
         """Sends an existing draft email."""
         credentials = service_account.Credentials.from_service_account_info(
-            SERVICE_ACCOUNT_INFO,
+            get_service_account_info(),
             scopes=['https://www.googleapis.com/auth/gmail.compose']
         )
         
@@ -208,7 +219,7 @@ class GmailTool(BaseTool):
     def delete_draft_email(self, params: dict) -> JsonArtifact:
         """Deletes an existing draft email."""
         credentials = service_account.Credentials.from_service_account_info(
-            SERVICE_ACCOUNT_INFO,
+            get_service_account_info(),
             scopes=['https://www.googleapis.com/auth/gmail.compose']
         )
         
@@ -226,4 +237,8 @@ class GmailTool(BaseTool):
         })
 
 def init_tool() -> BaseTool:
+    for var in REQUIRED_ENV_VARS:
+        if os.getenv(var) is None:
+            raise ValueError(f"Missing required environment variable: {var}")
+
     return GmailTool()
