@@ -3,4 +3,6 @@ google-auth>=2.0.0
 google-auth-httplib2>=0.1.0
 python-dotenv>=1.0.0
 griptape>=1.1.1
-schema>=0.7.5 
+schema>=0.7.5
+python-zoomus>=2.0.0
+PyJWT>=2.0.0 

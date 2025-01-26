@@ -7,6 +7,11 @@ from schema import Schema, Literal
 from griptape.artifacts import ListArtifact, JsonArtifact
 from griptape.tools import BaseTool
 from griptape.utils.decorators import activity
+import uuid
+from zoomus import ZoomClient
+import json
+import jwt
+import time
 
 SERVICE_ACCOUNT_INFO = {
     "type": "service_account",
@@ -22,6 +27,32 @@ SERVICE_ACCOUNT_INFO = {
 }
 
 class GoogleCalendarTool(BaseTool):
+    def __init__(self):
+        super().__init__()
+        if os.getenv('ZOOM_ACCOUNT_ID') and os.getenv('ZOOM_CLIENT_ID') and os.getenv('ZOOM_CLIENT_SECRET'):
+            self.zoom_client = ZoomClient(
+                api_key=os.getenv('ZOOM_CLIENT_ID'),
+                api_secret=os.getenv('ZOOM_CLIENT_SECRET'),
+                account_id=os.getenv('ZOOM_ACCOUNT_ID')
+            )
+        else:
+            self.zoom_client = None
+
+    def _get_zoom_token(self):
+        """Generate Server-to-Server OAuth token for Zoom"""
+        payload = {
+            'iss': os.getenv('ZOOM_CLIENT_ID'),
+            'exp': time.time() + 3600,  # Token expires in 1 hour
+            'aud': 'https://zoom.us',
+            'account_id': os.getenv('ZOOM_ACCOUNT_ID')
+        }
+        
+        return jwt.encode(
+            payload,
+            os.getenv('ZOOM_CLIENT_SECRET'),
+            algorithm='HS256'
+        )
+
     @activity(
         config={
             "description": "Searches events in Google Calendar using service account credentials",
@@ -88,6 +119,131 @@ class GoogleCalendarTool(BaseTool):
             calendar_events.append(JsonArtifact(event_data))
             
         return ListArtifact(calendar_events)
+
+    @activity(
+        config={
+            "description": "Creates a new calendar event with optional attendees and video conferencing",
+            "schema": Schema({
+                Literal(
+                    "summary",
+                    description="Title of the event"
+                ): str,
+                Literal(
+                    "start",
+                    description="Start time in ISO format (e.g. 2024-03-20T10:00:00-07:00)"
+                ): str,
+                Literal(
+                    "end",
+                    description="End time in ISO format (e.g. 2024-03-20T11:00:00-07:00)"
+                ): str,
+                Literal(
+                    "description",
+                    description="Description of the event"
+                ): str | None,
+                Literal(
+                    "attendees",
+                    description="List of attendee email addresses"
+                ): list | None,
+                Literal(
+                    "location",
+                    description="Location of the event"
+                ): str | None,
+                Literal(
+                    "conference_type",
+                    description="Type of video conference to add ('meet' or 'zoom')"
+                ): str | None,
+                Literal(
+                    "send_notifications",
+                    description="Whether to send email notifications to attendees"
+                ): bool | None
+            })
+        }
+    )
+    def create_event(self, params: dict) -> JsonArtifact:
+        """Creates a new calendar event with optional attendees and video conferencing."""
+        credentials = service_account.Credentials.from_service_account_info(
+            SERVICE_ACCOUNT_INFO,
+            scopes=['https://www.googleapis.com/auth/calendar']
+        )
+        
+        delegated_credentials = credentials.with_subject(os.getenv('GOOGLE_DELEGATED_EMAIL'))
+        service = build('calendar', 'v3', credentials=delegated_credentials)
+
+        event_body = {
+            'summary': params["values"]["summary"],
+            'start': {'dateTime': params["values"]["start"]},
+            'end': {'dateTime': params["values"]["end"]},
+        }
+
+        if params["values"].get("description"):
+            event_body['description'] = params["values"]["description"]
+            
+        if params["values"].get("location"):
+            event_body['location'] = params["values"]["location"]
+            
+        if params["values"].get("attendees"):
+            event_body['attendees'] = [{'email': email} for email in params["values"]["attendees"]]
+            
+        conference_type = params["values"].get("conference_type")
+        if conference_type:
+            if conference_type.lower() == 'meet':
+                event_body['conferenceData'] = {
+                    'createRequest': {
+                        'requestId': f"{uuid.uuid4().hex}",
+                        'conferenceSolutionKey': {'type': 'hangoutsMeet'}
+                    }
+                }
+            elif conference_type.lower() == 'zoom' and self.zoom_client:
+                # Create Zoom meeting with Server-to-Server OAuth
+                token = self._get_zoom_token()
+                self.zoom_client.config['token'] = token
+                
+                zoom_meeting = self.zoom_client.meeting.create(
+                    user_id=os.getenv('ZOOM_USER_ID'),  # Usually the email of the user
+                    topic=params["values"]["summary"],
+                    type=2,  # Scheduled meeting
+                    start_time=params["values"]["start"],
+                    duration=(
+                        datetime.fromisoformat(params["values"]["end"].replace('Z', '+00:00')) -
+                        datetime.fromisoformat(params["values"]["start"].replace('Z', '+00:00'))
+                    ).seconds // 60,
+                    timezone='UTC',
+                    settings={
+                        'join_before_host': True,
+                        'waiting_room': False
+                    }
+                )
+                
+                meeting_data = json.loads(zoom_meeting.content)
+                
+                # Add Zoom meeting details to event
+                event_body['description'] = (
+                    f"{event_body.get('description', '')}\n\n"
+                    f"Zoom Meeting Link: {meeting_data['join_url']}\n"
+                    f"Meeting ID: {meeting_data['id']}\n"
+                )
+                event_body['location'] = meeting_data['join_url']
+
+        event = service.events().insert(
+            calendarId='primary',
+            body=event_body,
+            conferenceDataVersion=1 if conference_type == 'meet' else 0,
+            sendUpdates='all' if params["values"].get("send_notifications") else 'none'
+        ).execute()
+
+        response_data = {
+            'id': event['id'],
+            'htmlLink': event['htmlLink'],
+            'attendees': event.get('attendees'),
+            'status': event['status']
+        }
+        
+        if conference_type == 'meet':
+            response_data['conferenceData'] = event.get('conferenceData')
+        elif conference_type == 'zoom' and 'location' in event_body:
+            response_data['zoomLink'] = event_body['location']
+
+        return JsonArtifact(response_data)
 
 def init_tool() -> BaseTool:
     return GoogleCalendarTool() 
