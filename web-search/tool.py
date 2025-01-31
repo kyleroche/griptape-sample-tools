@@ -12,10 +12,10 @@ def init_tool() -> WebSearchTool:
     driver = DuckDuckGoWebSearchDriver()
     # Check the environment variable to determine which driver to use
     if os.getenv("TAVILY_API_KEY") is not None:
-        driver = TavilyWebSearchDriver(api_key=os.getenv("TAVILY_API_KEY"))
+        driver = TavilyWebSearchDriver(api_key=os.environ["TAVILY_API_KEY"])
     elif os.getenv("EXA_API_KEY") is not None:
-        driver = ExaWebSearchDriver(api_key=os.getenv("EXA_API_KEY"))
+        driver = ExaWebSearchDriver(api_key=os.environ["EXA_API_KEY"])
 
-    driver.results_count = os.getenv("WEBSEARCH_RESULTS_COUNT", 5)
+    driver.results_count = int(os.getenv("WEBSEARCH_RESULTS_COUNT", 5))
 
     return WebSearchTool(web_search_driver=driver)
