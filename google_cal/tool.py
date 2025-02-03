@@ -29,17 +29,24 @@ SERVICE_ACCOUNT_INFO = {
 class GoogleCalendarTool(BaseTool):
     def __init__(self):
         super().__init__()
+        self._init_zoom_client()
+
+    def _init_zoom_client(self):
         if os.getenv('ZOOM_ACCOUNT_ID') and os.getenv('ZOOM_CLIENT_ID') and os.getenv('ZOOM_CLIENT_SECRET'):
             self.zoom_client = ZoomClient(
-                api_key=os.getenv('ZOOM_CLIENT_ID'),
-                api_secret=os.getenv('ZOOM_CLIENT_SECRET'),
-                account_id=os.getenv('ZOOM_ACCOUNT_ID')
+                os.getenv('ZOOM_CLIENT_ID'),  # First positional arg: api_key
+                os.getenv('ZOOM_CLIENT_SECRET'),  # Second positional arg: api_secret
+                os.getenv('ZOOM_ACCOUNT_ID')  # Third positional arg: api_account_id
             )
         else:
             self.zoom_client = None
+            self.zoom_account_id = None
 
     def _get_zoom_token(self):
         """Generate Server-to-Server OAuth token for Zoom"""
+        if not self.zoom_client:
+            return None
+            
         payload = {
             'iss': os.getenv('ZOOM_CLIENT_ID'),
             'exp': time.time() + 3600,  # Token expires in 1 hour
