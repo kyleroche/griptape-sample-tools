@@ -2,7 +2,7 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from typing import List, Dict
 import os
-from schema import Schema, Literal
+from schema import Schema, Literal, Optional
 from griptape.artifacts import ListArtifact, JsonArtifact
 from griptape.tools import BaseTool
 from griptape.utils.decorators import activity
@@ -50,7 +50,7 @@ class GmailTool(BaseTool):
                 Literal(
                     "labelIds",
                     description="List of Gmail label IDs to filter by"
-                ): list,
+                ): [str],
                 Literal(
                     "maxResults",
                     description="Maximum number of emails to return"
@@ -119,14 +119,14 @@ class GmailTool(BaseTool):
                     "body",
                     description="Email body content"
                 ): str,
-                Literal(
+                Optional(Literal(
                     "cc",
                     description="CC recipients (optional)"
-                ): str | None,
-                Literal(
+                )): str,
+                Optional(Literal(
                     "bcc",
                     description="BCC recipients (optional)"
-                ): str | None
+                )): str
             })
         }
     )

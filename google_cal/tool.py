@@ -3,7 +3,7 @@ from googleapiclient.discovery import build
 from datetime import datetime, timedelta
 from typing import List, Dict
 import os
-from schema import Schema, Literal
+from schema import Schema, Literal, Optional
 from griptape.artifacts import ListArtifact, JsonArtifact
 from griptape.tools import BaseTool
 from griptape.utils.decorators import activity
@@ -137,32 +137,32 @@ class GoogleCalendarTool(BaseTool):
                 ): str,
                 Literal(
                     "start",
-                    description="Start time in ISO format (e.g. 2024-03-20T10:00:00-07:00)"
+                    description="Start time in ISO format"
                 ): str,
                 Literal(
                     "end",
-                    description="End time in ISO format (e.g. 2024-03-20T11:00:00-07:00)"
+                    description="End time in ISO format"
                 ): str,
-                Literal(
+                Optional(Literal(
                     "description",
                     description="Description of the event"
-                ): str | None,
-                Literal(
+                )): str,
+                Optional(Literal(
                     "attendees",
                     description="List of attendee email addresses"
-                ): list | None,
-                Literal(
+                )): [str],
+                Optional(Literal(
                     "location",
                     description="Location of the event"
-                ): str | None,
-                Literal(
+                )): str,
+                Optional(Literal(
                     "conference_type",
                     description="Type of video conference to add ('meet' or 'zoom')"
-                ): str | None,
-                Literal(
+                )): str,
+                Optional(Literal(
                     "send_notifications",
                     description="Whether to send email notifications to attendees"
-                ): bool | None
+                )): bool
             })
         }
     )
@@ -170,7 +170,7 @@ class GoogleCalendarTool(BaseTool):
         """Creates a new calendar event with optional attendees and video conferencing."""
         credentials = service_account.Credentials.from_service_account_info(
             SERVICE_ACCOUNT_INFO,
-            scopes=['https://www.googleapis.com/auth/calendar']
+            scopes=['https://www.googleapis.com/auth/calendar.events']
         )
         
         delegated_credentials = credentials.with_subject(os.getenv('GOOGLE_DELEGATED_EMAIL'))
@@ -206,7 +206,7 @@ class GoogleCalendarTool(BaseTool):
                 self.zoom_client.config['token'] = token
                 
                 zoom_meeting = self.zoom_client.meeting.create(
-                    user_id=os.getenv('ZOOM_USER_ID'),  # Usually the email of the user
+                    user_id=os.getenv('ZOOM_USER_ID'),
                     topic=params["values"]["summary"],
                     type=2,  # Scheduled meeting
                     start_time=params["values"]["start"],
