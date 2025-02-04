@@ -6,7 +6,7 @@ from griptape.artifacts import TextArtifact, BaseArtifact
 from griptape.tools import BaseTool
 from griptape.utils.decorators import activity
 from griptape.drivers import GriptapeCloudFileManagerDriver
-from schema import Schema, Literal
+from schema import Schema, Literal, Optional
 import os.path
 import pickle
 import traceback
@@ -48,12 +48,16 @@ class GoogleOAuthTool(BaseTool):
 
     @activity(
         config={
-            "description": "Starts OAuth flow and returns URL for user authentication",
+            "description": "Handles OAuth authentication flow",
             "schema": Schema({
                 Literal(
                     "action",
-                    description="Action to perform - either 'start' to begin OAuth or 'test' to verify credentials"
+                    description="Action to perform - 'start' to begin OAuth, 'code' to complete OAuth with authorization code, or 'test' to verify credentials"
                 ): str,
+                Optional(Literal(
+                    "authorization_code",
+                    description="The authorization code received from OAuth redirect"
+                )): str
             })
         }
     )
@@ -74,15 +78,21 @@ class GoogleOAuthTool(BaseTool):
                             temp_path = temp.name
                         
                         try:
+                            # Use run_console_flow instead of run_local_server
                             flow = InstalledAppFlow.from_client_secrets_file(temp_path, SCOPES)
-                            creds = flow.run_local_server(port=0)
+                            flow.redirect_uri = 'http://localhost:8080'  # Set redirect URI first
+                            auth_url, _ = flow.authorization_url(
+                                access_type='offline',
+                                include_granted_scopes='true'
+                            )
                             
-                            # Get user email
-                            gmail_service = build('gmail', 'v1', credentials=creds)
-                            profile = gmail_service.users().getProfile(userId='me').execute()
-                            user_email = profile.get('emailAddress')
-                            
-                            return TextArtifact(f"✅ Authentication successful for {user_email}! (Cloud mode: token not saved)")
+                            return TextArtifact(
+                                "🔐 Please complete OAuth flow:\n\n"
+                                f"1. Visit this URL: {auth_url}\n"
+                                "2. Complete the authentication process\n"
+                                "3. Copy the authorization code\n"
+                                "4. Use the code in your next request"
+                            )
                         finally:
                             os.unlink(temp_path)
                             
@@ -120,6 +130,37 @@ class GoogleOAuthTool(BaseTool):
                         pickle.dump(creds, token)
                     return TextArtifact(f"✅ Authentication successful! Credentials saved as {token_file}")
                 
+            elif action == "code":
+                if not "authorization_code" in params["values"]:
+                    return TextArtifact("Error: authorization_code is required for this action")
+                
+                try:
+                    # Get credentials from cloud and complete OAuth
+                    creds_content = self.cloud_driver.load_file('credentials.json')
+                    
+                    with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json') as temp:
+                        temp.write(creds_content.value.decode('utf-8'))
+                        temp_path = temp.name
+                    
+                    try:
+                        flow = InstalledAppFlow.from_client_secrets_file(temp_path, SCOPES)
+                        flow.redirect_uri = 'http://localhost:8080'  # Add redirect URI before fetching token
+                        flow.fetch_token(code=params["values"]["authorization_code"])
+                        creds = flow.credentials
+                        
+                        # Get user email
+                        gmail_service = build('gmail', 'v1', credentials=creds)
+                        profile = gmail_service.users().getProfile(userId='me').execute()
+                        user_email = profile.get('emailAddress')
+                        
+                        return TextArtifact(f"✅ Authentication successful for {user_email}! (Cloud mode: token not saved)")
+                    finally:
+                        os.unlink(temp_path)
+                    
+                except Exception as e:
+                    traceback.print_exc()
+                    return TextArtifact(f"Error completing OAuth flow: {str(e)}")
+            
             elif action == "test":
                 if self.use_cloud:
                     return TextArtifact("Test action not available in cloud mode. Please authenticate again if needed.")
