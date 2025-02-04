@@ -133,7 +133,7 @@ class GmailTool(BaseTool):
     def create_draft_email(self, params: dict) -> JsonArtifact:
         """Creates a draft email in Gmail using service account credentials."""
         credentials = service_account.Credentials.from_service_account_info(
-            SERVICE_ACCOUNT_INFO,
+            get_service_account_info(),
             scopes=['https://www.googleapis.com/auth/gmail.compose']
         )
         

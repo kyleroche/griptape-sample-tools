@@ -11,6 +11,7 @@ import uuid
 from zoomus import ZoomClient
 import json
 import jwt
+import traceback
 import time
 
 SERVICE_ACCOUNT_INFO = {
@@ -23,7 +24,7 @@ SERVICE_ACCOUNT_INFO = {
     "auth_uri": "https://accounts.google.com/o/oauth2/auth",
     "token_uri": "https://oauth2.googleapis.com/token",
     "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-    "client_x509_cert_url": f"https://www.googleapis.com/robot/v1/metadata/x509/{os.getenv('GOOGLE_CLIENT_EMAIL').replace('@', '%40')}"
+    #"client_x509_cert_url": f"https://www.googleapis.com/robot/v1/metadata/x509/{os.getenv('GOOGLE_CLIENT_EMAIL').replace('@', '%40')}"
 }
 
 class GoogleCalendarTool(BaseTool):
@@ -201,25 +202,29 @@ class GoogleCalendarTool(BaseTool):
                     }
                 }
             elif conference_type.lower() == 'zoom' and self.zoom_client:
-                # Create Zoom meeting with Server-to-Server OAuth
-                token = self._get_zoom_token()
-                self.zoom_client.config['token'] = token
-                
-                zoom_meeting = self.zoom_client.meeting.create(
-                    user_id=os.getenv('ZOOM_USER_ID'),
-                    topic=params["values"]["summary"],
-                    type=2,  # Scheduled meeting
-                    start_time=params["values"]["start"],
-                    duration=(
-                        datetime.fromisoformat(params["values"]["end"].replace('Z', '+00:00')) -
-                        datetime.fromisoformat(params["values"]["start"].replace('Z', '+00:00'))
-                    ).seconds // 60,
-                    timezone='UTC',
-                    settings={
-                        'join_before_host': True,
-                        'waiting_room': False
-                    }
-                )
+                try:
+                    start_dt = datetime.fromisoformat(params["values"]["start"])
+                    end_dt = datetime.fromisoformat(params["values"]["end"])
+                    
+                    print("Start:", params["values"]["start"])
+                    print("Parsed datetime:", start_dt)
+                    
+                    zoom_meeting = self.zoom_client.meeting.create(
+                        user_id=os.getenv('ZOOM_USER_ID'),
+                        topic=params["values"]["summary"],
+                        type=2,  # Scheduled meeting
+                        start_time=start_dt,
+                        duration=(end_dt - start_dt).seconds // 60,
+                        timezone='UTC',
+                        settings={
+                            'join_before_host': True,
+                            'waiting_room': False
+                        }
+                    )
+                except Exception as e:
+                    print(f"Error parsing date: {e}")
+                    traceback.print_exc()
+                    raise
                 
                 meeting_data = json.loads(zoom_meeting.content)
                 
