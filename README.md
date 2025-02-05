@@ -17,6 +17,8 @@ Once logged in, you can connect your GitHub account and [create a tool from a re
 | Calculator | [LINK](https://github.com/griptape-ai/griptape-sample-tools/tree/main/calculator) |
 | Datetime | [LINK](https://github.com/griptape-ai/griptape-sample-tools/tree/main/datetime) |
 | Random Number Generator | [LINK](https://github.com/griptape-ai/griptape-sample-tools/tree/main/random-number-generator) |
+| Web Scraper | [LINK](https://github.com/griptape-ai/griptape-sample-tools/tree/main/web-scraper) |
+| Web Search | [LINK](https://github.com/griptape-ai/griptape-sample-tools/tree/main/web-search) |
 
 ## Running Samples
 
