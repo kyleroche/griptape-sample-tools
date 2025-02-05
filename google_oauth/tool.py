@@ -13,6 +13,7 @@ import traceback
 import base64
 import json
 import tempfile
+from urllib.parse import quote  # Add this import at the top
 
 SCOPES = [
     'https://www.googleapis.com/auth/drive.file',
@@ -25,6 +26,8 @@ class GoogleOAuthTool(BaseTool):
     def __init__(self):
         super().__init__()
         self.use_cloud = os.getenv('GRIPTAPE_CLOUD_GOOGLE_OAUTH', '').lower() == 'true'
+        self.headless = os.getenv('GRIPTAPE_CLOUD_GOOGLE_OAUTH_HEADLESS', '').lower() == 'true'
+        self.redirect_uri = os.getenv('GRIPTAPE_CLOUD_GOOGLE_OAUTH_REDIRECT_URI', 'http://localhost')
         if self.use_cloud:
             self.cloud_driver = GriptapeCloudFileManagerDriver(
                 api_key=os.getenv('GRIPTAPE_CLOUD_API_KEY'),
@@ -74,25 +77,42 @@ class GoogleOAuthTool(BaseTool):
                         
                         # Write to temp file for OAuth flow
                         with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json') as temp:
-                            temp.write(creds_content.value.decode('utf-8'))  # Decode bytes to string
+                            temp.write(creds_content.value.decode('utf-8'))
                             temp_path = temp.name
                         
                         try:
-                            # Use run_console_flow instead of run_local_server
                             flow = InstalledAppFlow.from_client_secrets_file(temp_path, SCOPES)
-                            flow.redirect_uri = 'http://localhost:8080'  # Set redirect URI first
-                            auth_url, _ = flow.authorization_url(
-                                access_type='offline',
-                                include_granted_scopes='true'
-                            )
                             
-                            return TextArtifact(
-                                "🔐 Please complete OAuth flow:\n\n"
-                                f"1. Visit this URL: {auth_url}\n"
-                                "2. Complete the authentication process\n"
-                                "3. Copy the authorization code\n"
-                                "4. Use the code in your next request"
-                            )
+                            if self.headless:
+                                # Headless mode - return URL for manual auth
+                                flow.redirect_uri = self.redirect_uri
+                                auth_url, _ = flow.authorization_url(
+                                    access_type='offline',
+                                    include_granted_scopes='true'
+                                )
+                                
+                                print("\nDEBUG - Auth URL:")
+                                print("Type:", type(auth_url))
+                                print("Raw URL:", repr(auth_url))
+                                print("URL components:", auth_url.split('?'))
+                                print()
+                                
+                                return TextArtifact(
+                                    "🔐 Please complete OAuth flow:\n\n"
+                                    f"URL: {auth_url}\n\n"
+                                    "Instructions:\n"
+                                    "1. Visit the URL above\n"
+                                    "2. Complete the authentication process\n"
+                                    "3. Copy the authorization code\n"
+                                    "4. Use the code in your next request with action='code'"
+                                )
+                            else:
+                                # Browser mode - launch local server
+                                creds = flow.run_local_server(port=0)
+                                gmail_service = build('gmail', 'v1', credentials=creds)
+                                profile = gmail_service.users().getProfile(userId='me').execute()
+                                user_email = profile.get('emailAddress')
+                                return TextArtifact(f"✅ Authentication successful for {user_email}! (Cloud mode: token not saved)")
                         finally:
                             os.unlink(temp_path)
                             
@@ -144,7 +164,7 @@ class GoogleOAuthTool(BaseTool):
                     
                     try:
                         flow = InstalledAppFlow.from_client_secrets_file(temp_path, SCOPES)
-                        flow.redirect_uri = 'http://localhost:8080'  # Add redirect URI before fetching token
+                        flow.redirect_uri = self.redirect_uri
                         flow.fetch_token(code=params["values"]["authorization_code"])
                         creds = flow.credentials
                         
