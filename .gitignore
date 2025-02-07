@@ -1,17 +1,30 @@
 # Python cache files
 __pycache__/
 */__pycache__/
-**/__pycache__/
 *.py[cod]
 *$py.class
 
-# Virtual environment
-.venv/
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+
+# IDE settings
+.vscode/
+.idea/
+*.swp
+*.swo
 
 # OAuth credentials
 *.pickle
 credentials.json
 
 # Environment files
-.env
 .env.local
